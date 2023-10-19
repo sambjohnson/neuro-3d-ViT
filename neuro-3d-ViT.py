@@ -364,6 +364,8 @@ def main():
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    print(f'DEVICE == {device}')
+
     model = SwinUNETR(
         img_size=roi,
         in_channels=1,
