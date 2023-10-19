@@ -48,11 +48,12 @@ class AverageMeter(object):
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
 
-def datafold_read(datalist, basedir, fold=0, key="training"):
+def datafold_read(datalist, basedir, reader='NibabelReader',  fold=0, key="training"):
     with open(datalist) as f:
         json_data = json.load(f)
 
     json_data = json_data[key]
+
 
     for d in json_data:
         for k in d:
@@ -338,7 +339,7 @@ def trainer(model,
 def main():
    # Data directories
     mount_point = "/home"
-    json_list = f"{mount_point}/weiner/HCP/projects/CNL_scalpel/aparc_fsav_VTC.json"
+    json_list = f"{mount_point}/weiner/HCP/projects/CNL_scalpel/ben_aparc_fsav_VTC.json"
 
 
     roi = (128, 128, 128)
