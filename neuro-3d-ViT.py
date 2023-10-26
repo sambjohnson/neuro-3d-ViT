@@ -72,9 +72,9 @@ def datafold_read(datalist, basedir, fold=0, key="training"):
     return tr, val
 
 
-def save_checkpoint(model, epoch, filename="model.pt", best_acc=0, dir_add=''):
+def save_checkpoint(model, epoch, filename="model.pt", best_acc=0, dir_add='', loss_list=None):
     state_dict = model.state_dict()
-    save_dict = {"epoch": epoch, "best_acc": best_acc, "state_dict": state_dict}
+    save_dict = {"epoch": epoch, "best_acc": best_acc, "state_dict": state_dict, "loss": loss_list}
     filename = os.path.join(dir_add, filename)
     torch.save(save_dict, filename)
     print("Saving checkpoint", filename)
@@ -295,26 +295,16 @@ def trainer(model,
                 post_sigmoid=post_sigmoid,
                 post_pred=post_pred,
             )
-            dice_tc = val_acc[0]
-            dice_wt = val_acc[1]
-            dice_et = val_acc[2]
             val_avg_acc = np.mean(val_acc)
             print(
                 "Final validation stats {}/{}".format(epoch, max_epochs - 1),
-                ", dice_tc:",
-                dice_tc,
-                ", dice_wt:",
-                dice_wt,
-                ", dice_et:",
-                dice_et,
-                ", Dice_Avg:",
+                "Dice_Avg:",
                 val_avg_acc,
                 ", time {:.2f}s".format(time.time() - epoch_time),
             )
-            dices_tc.append(dice_tc)
-            dices_wt.append(dice_wt)
-            dices_et.append(dice_et)
+            
             dices_avg.append(val_avg_acc)
+            loss_list = [dices_avg]
             if val_avg_acc > val_acc_max:
                 print("new best ({:.6f} --> {:.6f}). ".format(val_acc_max, val_avg_acc))
                 val_acc_max = val_avg_acc
@@ -322,6 +312,7 @@ def trainer(model,
                     model,
                     epoch,
                     best_acc=val_acc_max,
+                    loss_list = loss_list
                 )
             scheduler.step()
     print("Training Finished !, Best Accuracy: ", val_acc_max)
