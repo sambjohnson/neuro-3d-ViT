@@ -102,7 +102,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
             transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=0),
             transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=1),
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-            transforms.NormalizeIntensityd(keys="image", nonzero=True),
+            #transforms.NormalizeIntensityd(keys="image", nonzero=True),
             transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=1.0),
             transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=1.0),
         ]
@@ -110,7 +110,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"], reader='NibabelReader'),
-            # transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            ConvertToMultiChannelBasedOnHCPClassesd(keys="label"),
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         ]
     )
@@ -337,8 +337,8 @@ def trainer(model,
    
 def main():
    # Data directories
-    mount_point = "/home"
-    json_list = f"{mount_point}/weiner/HCP/projects/CNL_scalpel/aparc_fsav_VTC.json"
+    mount_point = "/home/b-parker/Desktop/neurocluster/home"
+    json_list = f"{mount_point}/weiner/HCP/projects/CNL_scalpel/linux_aparc_fsav_VTC.json"
 
 
     roi = (128, 128, 128)
@@ -393,7 +393,7 @@ def main():
         overlap=infer_overlap,
     )
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5) ## TODO try 1e-3
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs)
 
 
