@@ -6,6 +6,8 @@ import shutil
 import tempfile
 import time
 import datetime
+from memory_profiler import profile
+import gc
 
 import numpy as np
 import nibabel as nib
@@ -110,8 +112,20 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"], reader='NibabelReader'),
+            AddChannelTransform(keys=["image"]),
             ConvertToMultiChannelBasedOnHCPClassesd(keys="label"),
+            transforms.CropForegroundd(
+                keys=["image", "label"],
+                source_key="image",
+                k_divisible=[roi[0], roi[1], roi[2]],
+            ),
+            transforms.RandSpatialCropd(
+                keys=["image", "label"],
+                roi_size=[roi[0], roi[1], roi[2]],
+                random_size=False,
+            ),
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            
         ]
     )
 
@@ -127,7 +141,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
     val_ds = data.Dataset(data=validation_files, transform=val_transform)
     val_loader = data.DataLoader(
         val_ds,
-        batch_size=1,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
@@ -151,10 +165,11 @@ class ConvertToMultiChannelBasedOnHCPClassesd(MapTransform):
         for key in self.keys:
             left_hemi = d[key][0].to(torch.int64)
             right_hemi = d[key][1].to(torch.int64) 
-            lh_oh = torch.nn.functional.one_hot(left_hemi, num_classes=5).permute(3,0,1,2)
-            rh_oh = torch.nn.functional.one_hot(right_hemi, num_classes=5).permute(3,0,1,2)
+            lh_oh = torch.nn.functional.one_hot(left_hemi, num_classes=5).permute(3, 0, 1, 2)
+            rh_oh = torch.nn.functional.one_hot(right_hemi, num_classes=5).permute(3, 0, 1, 2)
             w_background = torch.cat((lh_oh, rh_oh), axis=0).float()
-            d[key] = w_background[[1,2,3,4,6,7,8,9]] ## Slices out background for both lh and rh [0, 5] indexes
+            d[key] = w_background[[1, 2, 3, 4, 6, 7, 8, 9]]
+            #d[key] = w_background[list(range(1, 13))+list(range(14, 26))] ## Slices out background for both lh and rh [0, 5] indexes
 
         return d
 
@@ -174,13 +189,17 @@ class AddChannelTransform(MapTransform):
         for key in self.keys:
             d[key] = torch.unsqueeze(d[key], self.channel_idx).float()
         return d
-    
+
+# @profile    
 def train_epoch(model, loader, optimizer, epoch, loss_func, batch_size, max_epochs, device):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
+    
     for idx, batch_data in enumerate(loader):
+       
         data, target = batch_data["image"].to(device), batch_data["label"].to(device)
+        
         logits = model(data)
         loss = loss_func(logits, target)
         loss.backward()
@@ -192,6 +211,12 @@ def train_epoch(model, loader, optimizer, epoch, loss_func, batch_size, max_epoc
             "time {:.2f}s".format(time.time() - start_time),
         )
         start_time = time.time()
+        del batch_data
+        gc.collect()
+        gc.collect()
+
+
+  
     return run_loss.avg
 
 
@@ -221,17 +246,33 @@ def val_epoch(
             acc_func(y_pred=val_output_convert, y=val_labels_list)
             acc, not_nans = acc_func.aggregate()
             run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
-            dice_tc = run_acc.avg[0]
-            dice_wt = run_acc.avg[1]
-            dice_et = run_acc.avg[2]
+            dice_0 = run_acc.avg[0]
+            dice_1 = run_acc.avg[1]
+            dice_2 = run_acc.avg[2]
+            dice_3 = run_acc.avg[3]
+            dice_4 = run_acc.avg[4]
+            dice_5 = run_acc.avg[5]
+            dice_6 = run_acc.avg[6]
+            dice_7 = run_acc.avg[7]
+            
             print(
                 "Val {}/{} {}/{}".format(epoch, max_epochs, idx, len(loader)),
-                ", dice_tc:",
-                dice_tc,
-                ", dice_wt:",
-                dice_wt,
-                ", dice_et:",
-                dice_et,
+                ", dice_0: ",
+                dice_0,
+                "dice_1: ",
+                dice_1,
+                "dice_2: ",
+                dice_2,
+                "dice_3: ",
+                dice_3,
+                "dice_4: ",
+                dice_4,
+                "dice_5: ",
+                dice_5,
+                "dice_6: ",
+                dice_6,
+                "dice_7: ",
+                dice_7,
                 ", time {:.2f}s".format(time.time() - start_time),
             )
             start_time = time.time()
@@ -240,6 +281,7 @@ def val_epoch(
 
 def trainer(model, 
             train_loader,
+            model_name,
             val_loader, 
             optimizer, 
             loss_func, 
@@ -305,15 +347,17 @@ def trainer(model,
             
             dices_avg.append(val_avg_acc)
             loss_list = [dices_avg]
-            if val_avg_acc > val_acc_max:
-                print("new best ({:.6f} --> {:.6f}). ".format(val_acc_max, val_avg_acc))
-                val_acc_max = val_avg_acc
-                save_checkpoint(
-                    model,
-                    epoch,
-                    best_acc=val_acc_max,
-                    loss_list = loss_list
-                )
+
+            
+            #print("new best ({:.6f} --> {:.6f}). ".format(val_acc_max, val_avg_acc))
+            val_acc_max = val_avg_acc
+            save_checkpoint(
+                model,
+                epoch,
+                filename = f"epoch_{epoch}_{model_name}_VTC.pt",
+                best_acc=val_acc_max,
+                loss_list = loss_list
+            )
             scheduler.step()
     print("Training Finished !, Best Accuracy: ", val_acc_max)
     return (
@@ -328,21 +372,25 @@ def trainer(model,
    
 def main():
    # Data directories
-    mount_point = "/home/b-parker/Desktop/neurocluster/home"
-    json_list = f"{mount_point}/weiner/HCP/projects/CNL_scalpel/linux_aparc_fsav_VTC.json"
+    mount_point = "/home/b-parker/Desktop/neurocluster/"
+    lobesStrict_json_list = f"{mount_point}/home/weiner/HCP/projects/CNL_scalpel/linux_lobesStrict_gyri_sulci.json"
+    aparc_fsav_VTC_json_list = f"{mount_point}/home/weiner/HCP/projects/CNL_scalpel/linux_aparc_fsav_VTC.json"
 
 
-    roi = (128, 128, 128)
-    # roi = (96, 96, 96) # changed
-    batch_size = 2
+    lobesStrict_gyri_sulci_channels = 24
+    aparc_fsav_VTC_channels = 8
+    # roi = (128, 128, 128)
+    roi = (96, 96, 96) # changed
+    batch_size = 1
     sw_batch_size = 4
     fold = 1
     infer_overlap = 0.5
-    max_epochs = 100
+    max_epochs = 200
     val_every = 10
     data_dir=''
+    model_name = "neuro-3d-lobesStrict_gyri_sulci_1000"
 
-    with open(json_list, 'r') as f:
+    with open(aparc_fsav_VTC_json_list, 'r') as f:
         j = json.load(f)
 
     # inspect json file
@@ -350,7 +398,7 @@ def main():
 
     train_loader, val_loader = get_loader(batch_size,
                                         data_dir,
-                                        json_list,
+                                        aparc_fsav_VTC_json_list,
                                         fold,
                                         roi,
                                         num_workers=0)
@@ -363,7 +411,7 @@ def main():
     model = SwinUNETR(
         img_size=roi,
         in_channels=1,
-        out_channels=8,
+        out_channels=aparc_fsav_VTC_channels,
         feature_size=48,
         drop_rate=0.0,
         attn_drop_rate=0.0,
@@ -384,7 +432,7 @@ def main():
         overlap=infer_overlap,
     )
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5) ## TODO try 1e-3
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5) ## TODO try 1e-3
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs)
 
 
@@ -421,6 +469,7 @@ def main():
     trains_epoch,
     ) = trainer(
         model=model,
+        model_name=model_name, 
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
