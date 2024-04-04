@@ -91,6 +91,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
             transforms.LoadImaged(keys=["image", "label"], reader='NibabelReader'),
             AddChannelTransform(keys=["image"]),
             ConvertToMultiChannelBasedOnHCPClassesd(keys="label"),
+            ZeroVolumeTransform(keys=['image']),
             transforms.CropForegroundd(
                 keys=["image", "label"],
                 source_key="image",
@@ -114,6 +115,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
             transforms.LoadImaged(keys=["image", "label"], reader='NibabelReader'),
             AddChannelTransform(keys=["image"]),
             ConvertToMultiChannelBasedOnHCPClassesd(keys="label"),
+            ZeroVolumeTransform(keys=['image']),
             transforms.CropForegroundd(
                 keys=["image", "label"],
                 source_key="image",
@@ -148,7 +150,23 @@ def get_loader(batch_size, data_dir, json_list, fold, roi, num_workers=8):
     )
 
     return train_loader, val_loader
-    
+   
+class ZeroVolumeTransform(MapTransform):
+    """
+    Set value to -5 where the value is 0
+    """
+
+    def __init__(self, keys, channel_idx=0):
+        super().__init__(keys=keys)
+        self.channel_idx = channel_idx
+        self.keys = keys
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            d[key] = torch.where(d[key] == 0, torch.tensor(-5.0), d[key])
+        return d
+     
 class ConvertToMultiChannelBasedOnHCPClassesd(MapTransform):
     """
     Convert labels to multi channels based on brats classes:
@@ -385,10 +403,10 @@ def main():
     sw_batch_size = 4
     fold = 1
     infer_overlap = 0.5
-    max_epochs = 200
+    max_epochs = 100
     val_every = 10
     data_dir=''
-    model_name = "neuro-3d-lobesStrict_gyri_sulci_1000"
+    model_name = "neuro-3d-aparc_fsav-0ed-background"
 
     with open(aparc_fsav_VTC_json_list, 'r') as f:
         j = json.load(f)
